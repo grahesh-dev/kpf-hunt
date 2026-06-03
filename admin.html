@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KPF Hunt — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="admin-page">
+
+  <!-- ════════════════════ LOGIN OVERLAY ════════════════════ -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card fade-up">
+
+      <div class="kpf-logo">
+        <svg width="52" height="52" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="60" height="60" rx="16" fill="#000"/>
+          <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle"
+                fill="#fff" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="23" letter-spacing="-0.5">KPF</text>
+        </svg>
+      </div>
+
+      <h1 class="login-title">Admin Dashboard</h1>
+      <p class="login-sub">KPF Hunt 2026</p>
+
+      <form id="login-form" novalidate>
+        <div class="field-group">
+          <label class="field-label" for="admin-pw">Password</label>
+          <input
+            type="password"
+            id="admin-pw"
+            class="field-input"
+            placeholder="Enter admin password"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+        <div class="field-error" id="login-error" role="alert" aria-live="polite"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:8px;">Login</button>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ DASHBOARD ════════════════════ -->
+  <div id="dashboard" style="display:none;">
+
+    <!-- TOP BAR -->
+    <header class="admin-header">
+      <div class="admin-header-inner">
+
+        <div class="admin-brand">
+          <svg width="32" height="32" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect width="60" height="60" rx="16" fill="#000"/>
+            <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle"
+                  fill="#fff" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="23" letter-spacing="-0.5">KPF</text>
+          </svg>
+          <span class="admin-brand-text">Hunt Admin</span>
+        </div>
+
+        <div class="admin-header-controls">
+          <span class="refresh-countdown" id="refresh-countdown">
+            Refreshing in <strong id="countdown-num">15</strong>s
+          </span>
+          <button class="btn btn-outline btn-sm" id="refresh-btn" aria-label="Refresh now">↻ Refresh</button>
+          <button class="btn btn-outline btn-sm" id="export-btn" aria-label="Export CSV">↓ CSV</button>
+          <button class="btn btn-danger  btn-sm" id="clear-btn"  aria-label="Clear all data">🗑 Clear</button>
+          <button class="btn btn-ghost   btn-sm" id="logout-btn" aria-label="Logout">Logout</button>
+        </div>
+
+      </div>
+    </header>
+
+    <main class="admin-main">
+
+      <!-- STATUS BAR -->
+      <div class="status-bar" id="status-bar" role="status" aria-live="polite">
+        <span class="status-dot status-dot--loading" id="status-dot"></span>
+        <span id="status-text">Loading…</span>
+      </div>
+
+      <!-- STATS ROW -->
+      <section class="stats-row" aria-label="Summary statistics">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-label">Total Submissions</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-teams">—</div>
+          <div class="stat-label">Teams Submitted</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-checkpoints">—</div>
+          <div class="stat-label">Checkpoints Covered</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value stat-value--small" id="stat-last">—</div>
+          <div class="stat-label">Last Submission</div>
+        </div>
+      </section>
+
+      <!-- PROGRESS GRID -->
+      <section class="section-card" aria-label="Team progress grid">
+        <h2 class="section-title">Progress Grid</h2>
+        <div class="progress-grid-wrap">
+          <table class="progress-grid" id="progress-grid">
+            <thead>
+              <tr>
+                <th class="pg-team-col">Team</th>
+                <th>CP 1</th>
+                <th>CP 2</th>
+                <th>CP 3</th>
+                <th>CP 4</th>
+                <th>CP 5</th>
+              </tr>
+            </thead>
+            <tbody id="progress-body">
+              <!-- populated by admin.js -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SUBMISSIONS TABLE -->
+      <section class="section-card" aria-label="All submissions">
+        <div class="section-header">
+          <h2 class="section-title">Submissions</h2>
+          <input
+            type="search"
+            id="table-search"
+            class="field-input search-input"
+            placeholder="Search team, checkpoint or answer…"
+            aria-label="Search submissions"
+          />
+        </div>
+        <div class="table-wrap">
+          <table class="submissions-table" id="submissions-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-col="index">#<span class="sort-icon">↕</span></th>
+                <th class="sortable sort-desc" data-col="timestamp">Time<span class="sort-icon">↕</span></th>
+                <th class="sortable" data-col="team">Team<span class="sort-icon">↕</span></th>
+                <th class="sortable" data-col="checkpoint">Checkpoint<span class="sort-icon">↕</span></th>
+                <th>Answer</th>
+              </tr>
+            </thead>
+            <tbody id="submissions-body">
+              <!-- populated by admin.js -->
+            </tbody>
+          </table>
+          <div id="table-empty" class="table-empty" style="display:none;">
+            No submissions yet — waiting for teams to scan in! 🏁
+          </div>
+        </div>
+      </section>
+
+      <!-- QR CODES -->
+      <section class="section-card" aria-label="QR codes for checkpoints">
+        <h2 class="section-title">QR Codes</h2>
+        <p class="section-note">
+          Print and post one at each checkpoint. Each QR links to
+          <code>https://grahesh-dev.github.io/kpf-hunt/scan.html?qr=N</code>
+        </p>
+        <div class="qr-grid" id="qr-grid">
+          <!-- populated by admin.js -->
+        </div>
+      </section>
+
+    </main>
+  </div><!-- /dashboard -->
+
+  <script src="js/admin.js"></script>
+</body>
+</html>
