@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KPF Hunt — Live Leaderboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="lb-page">
+
+  <div class="lb-wrap">
+
+    <header class="lb-header">
+      <div class="lb-logo">
+        <span class="lb-kpf">KPF</span>
+        <span class="lb-hunt">Hunt</span>
+      </div>
+      <div class="lb-title-block">
+        <h1 class="lb-title">Live Leaderboard</h1>
+        <div class="lb-live-row">
+          <span class="lb-live-dot"></span>
+          <span class="lb-live-text" id="lbLiveText">Updating…</span>
+        </div>
+      </div>
+      <div class="lb-meta">
+        <div class="lb-meta-item">
+          <span class="lb-meta-val" id="lbTotalPlayers">—</span>
+          <span class="lb-meta-label">Players</span>
+        </div>
+        <div class="lb-meta-item">
+          <span class="lb-meta-val" id="lbTotalCheckins">—</span>
+          <span class="lb-meta-label">Check-ins</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="lb-body" id="lbBody">
+      <div class="lb-loading">Loading leaderboard…</div>
+    </div>
+
+    <footer class="lb-footer">
+      <span id="lbLastUpdated">—</span>
+      <a href="index.html" class="lb-home-link">← Home</a>
+    </footer>
+
+  </div>
+
+  <script src="js/leaderboard.js"></script>
+</body>
+</html>
