@@ -1,194 +1,136 @@
-/* ═══════════════════════════════════════════════════════════════════
-   KPF HUNT — scan.js  (v7 · GitHub Pages rebuild)
-   ═══════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   KPF Hunt — scan.js  v8
+   Handles: QR param parsing, form validation, duplicate check,
+            Firebase POST (no Content-Type header), success/error UI
+═══════════════════════════════════════════════════════════════ */
 
-'use strict';
-
-/* ─── CONFIG ─────────────────────────────────────────────────────── */
 const FIREBASE_URL = 'https://kpfhunt-default-rtdb.firebaseio.com';
 
-const TEAM_PASSWORDS = {
-  'Team Alpha': 'HUNT01',
-  'Team Beta':  'HUNT02',
-  'Team Gamma': 'HUNT03',
-  'Team Delta': 'HUNT04',
-  'Team Sigma': 'HUNT05',
-};
+/* ── DOM refs ── */
+const invalidCard  = document.getElementById('invalidCard');
+const formCard     = document.getElementById('formCard');
+const successCard  = document.getElementById('successCard');
+const cpLabel      = document.getElementById('cpLabel');
+const checkinForm  = document.getElementById('checkinForm');
+const nameInput    = document.getElementById('nameInput');
+const officeSelect = document.getElementById('officeSelect');
+const submitBtn    = document.getElementById('submitBtn');
+const btnText      = submitBtn.querySelector('.btn-text');
+const btnSpinner   = submitBtn.querySelector('.btn-spinner');
+const dupWarning   = document.getElementById('dupWarning');
+const errorMsg     = document.getElementById('errorMsg');
+const successTitle = document.getElementById('successTitle');
+const successMsgEl = document.getElementById('successMsg');
 
-/* ─── DOM REFS ───────────────────────────────────────────────────── */
-const invalidState    = document.getElementById('invalid-state');
-const formState       = document.getElementById('form-state');
-const successState    = document.getElementById('success-state');
-const checkpointBadge = document.getElementById('checkpoint-badge');
-const scanForm        = document.getElementById('scan-form');
-const teamSelect      = document.getElementById('team-select');
-const passwordInput   = document.getElementById('password-input');
-const answerInput     = document.getElementById('answer-input');
-const pwError         = document.getElementById('pw-error');
-const answerError     = document.getElementById('answer-error');
-const formError       = document.getElementById('form-error');
-const submitBtn       = document.getElementById('submit-btn');
-const successMsg      = document.getElementById('success-msg');
-const pwToggle        = document.getElementById('pw-toggle');
-const eyeIcon         = document.getElementById('eye-icon');
+/* ── Read ?qr= param ── */
+const params = new URLSearchParams(window.location.search);
+const qrRaw  = params.get('qr');
+const qrNum  = parseInt(qrRaw, 10);
+const validQR = !isNaN(qrNum) && qrNum >= 1 && qrNum <= 100;
 
-/* ─── READ QR PARAM ──────────────────────────────────────────────── */
-const params          = new URLSearchParams(window.location.search);
-const qrParam         = params.get('qr');
-const qrNum           = parseInt(qrParam, 10);
-const validQR         = !isNaN(qrNum) && qrNum >= 1 && qrNum <= 5;
-const checkpointLabel = validQR ? `Checkpoint ${qrNum}` : null;
-
-/* ─── INIT ───────────────────────────────────────────────────────── */
 if (!validQR) {
-  invalidState.style.display = 'flex';
+  invalidCard.style.display = '';
 } else {
-  checkpointBadge.textContent = `📍 ${checkpointLabel}`;
-  document.title = `KPF Hunt — ${checkpointLabel}`;
-  formState.style.display = 'flex';
+  cpLabel.textContent = `Checkpoint ${qrNum}`;
+  formCard.style.display = '';
 }
 
-/* ─── PASSWORD VISIBILITY TOGGLE ────────────────────────────────── */
-const EYE_OPEN = `
-  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-  <circle cx="12" cy="12" r="3"/>`;
-
-const EYE_CLOSED = `
-  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8
-           a18.45 18.45 0 0 1 5.06-5.94"/>
-  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8
-           a18.5 18.5 0 0 1-2.16 3.19"/>
-  <line x1="1" y1="1" x2="23" y2="23"/>`;
-
-pwToggle.addEventListener('click', () => {
-  const isPassword = passwordInput.type === 'password';
-  passwordInput.type = isPassword ? 'text' : 'password';
-  eyeIcon.innerHTML  = isPassword ? EYE_CLOSED : EYE_OPEN;
-  pwToggle.setAttribute('aria-label',
-    isPassword ? 'Hide password' : 'Show password');
-});
-
-/* ─── HELPERS ────────────────────────────────────────────────────── */
-function clearErrors() {
-  pwError.textContent     = '';
-  answerError.textContent = '';
-  formError.textContent   = '';
-  formError.classList.remove('visible');
-  passwordInput.classList.remove('error');
-  answerInput.classList.remove('error');
-}
-
-function showFormError(msg) {
-  formError.textContent = msg;
-  formError.classList.add('visible');
-}
-
-function setLoading(on) {
-  submitBtn.classList.toggle('loading', on);
-  submitBtn.disabled = on;
-}
-
-/* ─── FIREBASE SUBMIT ────────────────────────────────────────────── */
-/*
- * CRITICAL: No Content-Type header.
- * Omitting Content-Type keeps this a CORS "simple request" — the browser
- * sends it directly with no OPTIONS preflight. Firebase REST accepts the
- * JSON body correctly regardless of whether the header is present.
- */
-async function submitToFirebase(team, checkpoint, answer) {
-  const payload = {
-    team:       team,
-    checkpoint: checkpoint,
-    answer:     answer,
-    timestamp:  new Date().toISOString(),
-  };
-
-  console.log('[scan] Submitting to Firebase:', payload);
-
-  const response = await fetch(FIREBASE_URL + '/submissions.json', {
-    method: 'POST',
-    body:   JSON.stringify(payload),
-    // ← NO headers object — avoids CORS preflight
-  });
-
-  console.log('[scan] Firebase response status:', response.status);
-
-  if (!response.ok) {
-    throw new Error('Firebase returned HTTP ' + response.status);
-  }
-
-  const result = await response.json();
-  console.log('[scan] Firebase result:', result);
-  return result;
-}
-
-/* ─── FORM SUBMIT ────────────────────────────────────────────────── */
-scanForm.addEventListener('submit', async (e) => {
+/* ── Form submit ── */
+checkinForm && checkinForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  clearErrors();
+  hideAlerts();
 
-  const team     = teamSelect.value;
-  const password = passwordInput.value.trim();
-  const answer   = answerInput.value.trim();
+  const name   = nameInput.value.trim();
+  const office = officeSelect.value;
 
-  /* Validate */
-  let hasError = false;
-
-  if (!team) {
-    showFormError('Please select your team.');
+  /* Basic validation */
+  if (!name) {
+    nameInput.classList.add('error');
+    nameInput.focus();
+    nameInput.addEventListener('input', () => nameInput.classList.remove('error'), { once: true });
+    return;
+  }
+  if (!office) {
+    officeSelect.classList.add('error');
+    officeSelect.focus();
+    officeSelect.addEventListener('change', () => officeSelect.classList.remove('error'), { once: true });
     return;
   }
 
-  if (!password) {
-    pwError.textContent = 'Password is required.';
-    passwordInput.classList.add('error');
-    hasError = true;
-  } else if (password.toUpperCase() !== TEAM_PASSWORDS[team]) {
-    pwError.textContent = 'Incorrect password for this team.';
-    passwordInput.classList.add('error');
-    /* Shake the password field wrapper */
-    const wrap = passwordInput.closest('.pw-wrap');
-    wrap.classList.add('shake');
-    wrap.addEventListener('animationend', () => wrap.classList.remove('shake'), { once: true });
-    hasError = true;
-  }
-
-  if (!answer) {
-    answerError.textContent = 'Please enter your answer.';
-    answerInput.classList.add('error');
-    hasError = true;
-  }
-
-  if (hasError) return;
-
-  /* Submit */
   setLoading(true);
 
+  /* ── Duplicate check ── */
   try {
-    await submitToFirebase(team, checkpointLabel, answer);
+    const dupFound = await checkDuplicate(name, qrNum);
+    if (dupFound) {
+      dupWarning.style.display = '';
+      dupWarning.classList.remove('shake');
+      void dupWarning.offsetWidth; // reflow
+      dupWarning.classList.add('shake');
+      dupWarning.addEventListener('animationend', () => dupWarning.classList.remove('shake'), { once: true });
+      setLoading(false);
+      return;
+    }
+  } catch (err) {
+    /* If the duplicate check itself fails, still allow submission */
+    console.warn('Duplicate check failed, proceeding:', err);
+  }
 
-    /* Success — swap states */
-    formState.style.display    = 'none';
-    successMsg.textContent     = `Good luck, ${team}! 🎉`;
-    successState.style.display = 'flex';
+  /* ── Submit to Firebase ── */
+  const payload = {
+    name:       name,
+    office:     office,
+    checkpoint: `Checkpoint ${qrNum}`,
+    timestamp:  new Date().toISOString()
+  };
+
+  try {
+    const res = await fetch(`${FIREBASE_URL}/checkins.json`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+      /* NO headers — avoids CORS preflight on Firebase REST API */
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    /* ── Success ── */
+    formCard.style.display = 'none';
+    successTitle.textContent = `Checked in at Checkpoint ${qrNum}!`;
+    successMsgEl.textContent = `Good luck, ${name}! 🎉`;
+    successCard.style.display = '';
 
   } catch (err) {
-    console.error('[scan] Submission error:', err);
-    showFormError('Submission failed. Please check your connection and try again.');
+    console.error('Firebase POST failed:', err);
+    errorMsg.style.display = '';
     setLoading(false);
   }
 });
 
-/* ─── CLEAR ERRORS ON INPUT ──────────────────────────────────────── */
-teamSelect.addEventListener('change', clearErrors);
+/* ── Helpers ── */
 
-passwordInput.addEventListener('input', () => {
-  pwError.textContent = '';
-  passwordInput.classList.remove('error');
-  formError.classList.remove('visible');
-});
+async function checkDuplicate(name, cpNum) {
+  const res  = await fetch(`${FIREBASE_URL}/checkins.json`);
+  const data = await res.json();
+  if (!data) return false;
 
-answerInput.addEventListener('input', () => {
-  answerError.textContent = '';
-  answerInput.classList.remove('error');
-});
+  const entries   = Object.values(data);
+  const cpStr     = `Checkpoint ${cpNum}`;
+  const nameLower = name.toLowerCase();
+
+  return entries.some(entry =>
+    entry.name &&
+    entry.name.toLowerCase() === nameLower &&
+    entry.checkpoint === cpStr
+  );
+}
+
+function setLoading(on) {
+  submitBtn.disabled = on;
+  btnText.style.display    = on ? 'none' : '';
+  btnSpinner.style.display = on ? '' : 'none';
+}
+
+function hideAlerts() {
+  dupWarning.style.display = 'none';
+  errorMsg.style.display   = 'none';
+}
