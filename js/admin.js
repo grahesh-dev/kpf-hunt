@@ -1,555 +1,570 @@
-/* ═══════════════════════════════════════════════════════════════════
-   KPF HUNT — admin.js  (v7 · GitHub Pages rebuild)
-   ═══════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   KPF Hunt — admin.js  v8
+   Handles: login, data fetch, stats, check-ins table, leaderboard,
+            QR generator, QR mini grid, CSV export, clear data,
+            auto-refresh, sidebar nav, filters, sorting
+═══════════════════════════════════════════════════════════════ */
 
-'use strict';
+const FIREBASE_URL  = 'https://kpfhunt-default-rtdb.firebaseio.com';
+const QR_BASE_URL   = 'https://grahesh-dev.github.io/kpf-hunt/scan.html';
+const ADMIN_PASS    = 'KPF2026';
+const REFRESH_SEC   = 15;
 
-/* ─── CONFIG ─────────────────────────────────────────────────────── */
-const FIREBASE_URL = 'https://kpfhunt-default-rtdb.firebaseio.com';
-const PASSWORD     = 'KPF2026';
-const REFRESH_SEC  = 15;
-
-/* QR codes use the hardcoded GitHub Pages base URL */
-const QR_BASE_URL  = 'https://grahesh-dev.github.io/kpf-hunt/scan.html';
-
-const TEAMS = [
-  'Team Alpha',
-  'Team Beta',
-  'Team Gamma',
-  'Team Delta',
-  'Team Sigma',
-];
-
-const CHECKPOINTS = [
-  'Checkpoint 1',
-  'Checkpoint 2',
-  'Checkpoint 3',
-  'Checkpoint 4',
-  'Checkpoint 5',
-];
-
-/* Maps team name → CSS class for table row tint and dot colour */
-const TEAM_ROW_CLASS = {
-  'Team Alpha': 'row-alpha',
-  'Team Beta':  'row-beta',
-  'Team Gamma': 'row-gamma',
-  'Team Delta': 'row-delta',
-  'Team Sigma': 'row-sigma',
-};
-const TEAM_DOT_CLASS = {
-  'Team Alpha': 'dot-alpha',
-  'Team Beta':  'dot-beta',
-  'Team Gamma': 'dot-gamma',
-  'Team Delta': 'dot-delta',
-  'Team Sigma': 'dot-sigma',
-};
-
-/* ─── STATE ──────────────────────────────────────────────────────── */
-let allSubmissions = [];   // full array, newest-first after fetch
-let filteredData   = [];   // subset after search filter
-let sortCol        = 'timestamp';
-let sortDir        = 'desc';
+/* ─────────────────────────────────────────────────────────────
+   STATE
+───────────────────────────────────────────────────────────────*/
+let allData       = [];   // raw array of check-in objects
+let filteredData  = [];   // after filters applied
+let sortCol       = 'timestamp';
+let sortDir       = 'desc';
+let refreshTimer  = null;
+let countdownVal  = REFRESH_SEC;
 let countdownTimer = null;
-let countdownSecs  = REFRESH_SEC;
 
-/* ─── DOM REFS ───────────────────────────────────────────────────── */
-const loginOverlay    = document.getElementById('login-overlay');
-const dashboard       = document.getElementById('dashboard');
-const loginForm       = document.getElementById('login-form');
-const loginError      = document.getElementById('login-error');
-const adminPwInput    = document.getElementById('admin-pw');
+/* ─────────────────────────────────────────────────────────────
+   DOM REFS
+───────────────────────────────────────────────────────────────*/
+const loginOverlay    = document.getElementById('loginOverlay');
+const adminWrap       = document.getElementById('adminWrap');
+const loginForm       = document.getElementById('loginForm');
+const loginPw         = document.getElementById('loginPw');
+const loginError      = document.getElementById('loginError');
+const logoutBtn       = document.getElementById('logoutBtn');
+const sidebarToggle   = document.getElementById('sidebarToggle');
+const adminSidebar    = document.getElementById('adminSidebar');
+const snavLinks       = document.querySelectorAll('.snav-link');
 
-const statusDot       = document.getElementById('status-dot');
-const statusText      = document.getElementById('status-text');
-const countdownNum    = document.getElementById('countdown-num');
+const statTotal       = document.getElementById('statTotal');
+const statPlayers     = document.getElementById('statPlayers');
+const statCheckpoints = document.getElementById('statCheckpoints');
+const statLast        = document.getElementById('statLast');
+const top10List       = document.getElementById('top10List');
 
-const statTotal       = document.getElementById('stat-total');
-const statTeams       = document.getElementById('stat-teams');
-const statCheckpoints = document.getElementById('stat-checkpoints');
-const statLast        = document.getElementById('stat-last');
+const filterName      = document.getElementById('filterName');
+const filterOffice    = document.getElementById('filterOffice');
+const filterCheckpoint= document.getElementById('filterCheckpoint');
+const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+const checkinsBody    = document.getElementById('checkinsBody');
+const tableFooter     = document.getElementById('tableFooter');
+const exportCsvBtn    = document.getElementById('exportCsvBtn');
+const clearDataBtn    = document.getElementById('clearDataBtn');
 
-const progressBody    = document.getElementById('progress-body');
-const submissionsBody = document.getElementById('submissions-body');
-const submissionsTable= document.getElementById('submissions-table');
-const tableEmpty      = document.getElementById('table-empty');
-const tableSearch     = document.getElementById('table-search');
-const qrGrid          = document.getElementById('qr-grid');
+const lbBody          = document.getElementById('lbBody');
+const refreshCountdown= document.getElementById('refreshCountdown');
+const refreshBtn      = document.getElementById('refreshBtn');
 
-const refreshBtn      = document.getElementById('refresh-btn');
-const exportBtn       = document.getElementById('export-btn');
-const clearBtn        = document.getElementById('clear-btn');
-const logoutBtn       = document.getElementById('logout-btn');
+const qrNumInput      = document.getElementById('qrNumInput');
+const genQrBtn        = document.getElementById('genQrBtn');
+const qrImg           = document.getElementById('qrImg');
+const qrUrlRow        = document.getElementById('qrUrlRow');
+const qrUrlText       = document.getElementById('qrUrlText');
+const copyUrlBtn      = document.getElementById('copyUrlBtn');
+const qrLabel         = document.getElementById('qrLabel');
+const qrMiniGrid      = document.getElementById('qrMiniGrid');
 
-
-/* ═══════════════════════════════════════════════════════════════════
-   AUTH
-   ═══════════════════════════════════════════════════════════════════ */
-function isLoggedIn() {
-  return sessionStorage.getItem('kpf_admin') === 'true';
+/* ─────────────────────────────────────────────────────────────
+   LOGIN / SESSION
+───────────────────────────────────────────────────────────────*/
+function checkSession() {
+  return sessionStorage.getItem('kpf_admin') === '1';
 }
 
 function showDashboard() {
   loginOverlay.style.display = 'none';
-  dashboard.style.display    = 'block';
-  buildQRCodes();
-  startAutoRefresh();
-  fetchData();
+  adminWrap.style.display    = 'flex';
+  init();
+}
+
+if (checkSession()) {
+  showDashboard();
 }
 
 loginForm.addEventListener('submit', (e) => {
   e.preventDefault();
-  const pw = adminPwInput.value.trim();
-  if (pw === PASSWORD) {
-    sessionStorage.setItem('kpf_admin', 'true');
-    loginError.textContent = '';
+  if (loginPw.value === ADMIN_PASS) {
+    sessionStorage.setItem('kpf_admin', '1');
+    loginError.style.display = 'none';
     showDashboard();
   } else {
-    loginError.textContent = 'Incorrect password.';
-    loginForm.classList.add('shake');
-    loginForm.addEventListener('animationend',
-      () => loginForm.classList.remove('shake'), { once: true });
-    adminPwInput.value = '';
-    adminPwInput.focus();
+    loginError.style.display = '';
+    loginPw.value = '';
+    loginPw.classList.add('shake');
+    loginPw.addEventListener('animationend', () => loginPw.classList.remove('shake'), { once: true });
   }
 });
 
 logoutBtn.addEventListener('click', () => {
   sessionStorage.removeItem('kpf_admin');
-  stopAutoRefresh();
-  dashboard.style.display    = 'none';
-  loginOverlay.style.display = 'flex';
-  adminPwInput.value = '';
+  location.reload();
 });
 
-/* Auto-login if session still valid */
-if (isLoggedIn()) showDashboard();
+/* ─────────────────────────────────────────────────────────────
+   SIDEBAR NAV
+───────────────────────────────────────────────────────────────*/
+snavLinks.forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const section = link.dataset.section;
+    activateSection(section);
+    // close sidebar on mobile
+    adminSidebar.classList.remove('open');
+  });
+});
 
+sidebarToggle.addEventListener('click', () => {
+  adminSidebar.classList.toggle('open');
+});
 
-/* ═══════════════════════════════════════════════════════════════════
-   DATA FETCHING
-   ═══════════════════════════════════════════════════════════════════ */
-function setStatus(state, msg) {
-  statusDot.className    = 'status-dot status-dot--' + state;
-  statusText.textContent = msg;
-}
-
-/**
- * Fetch all submissions from Firebase.
- * Firebase returns null when the DB is empty — we normalise that to [].
- * Firebase returns an object keyed by push-IDs — we use Object.values().
- */
-async function fetchSubmissions() {
-  console.log('[admin] Fetching from Firebase…');
-  const res = await fetch(FIREBASE_URL + '/submissions.json');
-
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-
-  const data = await res.json();
-  console.log('[admin] Raw Firebase response:', data);
-
-  if (!data) {
-    console.log('[admin] Firebase returned null (empty DB) — treating as []');
-    return [];
+// Close sidebar when clicking outside on mobile
+document.addEventListener('click', (e) => {
+  if (window.innerWidth <= 900 &&
+      !adminSidebar.contains(e.target) &&
+      e.target !== sidebarToggle) {
+    adminSidebar.classList.remove('open');
   }
+});
 
-  const submissions = Object.values(data);
-  console.log('[admin] Parsed submissions:', submissions);
-  return submissions;
+function activateSection(name) {
+  snavLinks.forEach(l => l.classList.toggle('active', l.dataset.section === name));
+  document.querySelectorAll('.admin-section').forEach(s => {
+    s.classList.toggle('active', s.id === `section-${name}`);
+  });
 }
 
-async function fetchData() {
-  setStatus('loading', 'Fetching data…');
-  try {
-    const submissions = await fetchSubmissions();
+/* ─────────────────────────────────────────────────────────────
+   INIT
+───────────────────────────────────────────────────────────────*/
+function init() {
+  buildCheckpointFilter();
+  buildQRMiniGrid();
+  fetchData();
+  startRefreshCycle();
 
-    /* Sort newest first */
-    allSubmissions = submissions.sort(
-      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
-    );
+  refreshBtn.addEventListener('click', () => {
+    resetCountdown();
+    fetchData();
+  });
 
-    const now = new Date().toLocaleTimeString('en-GB', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
+  // Filters
+  filterName.addEventListener('input', applyFilters);
+  filterOffice.addEventListener('change', applyFilters);
+  filterCheckpoint.addEventListener('change', applyFilters);
+  clearFiltersBtn.addEventListener('click', () => {
+    filterName.value = '';
+    filterOffice.value = '';
+    filterCheckpoint.value = '';
+    applyFilters();
+  });
+
+  // Sortable columns
+  document.querySelectorAll('.data-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortCol === col) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortCol = col;
+        sortDir = col === 'timestamp' ? 'desc' : 'asc';
+      }
+      updateSortHeaders();
+      renderTable();
     });
+  });
 
-    const count = allSubmissions.length;
-    setStatus('ok',
-      count === 0
-        ? `Last updated at ${now} · No submissions yet`
-        : `Last updated at ${now} · ${count} submission${count !== 1 ? 's' : ''}`
-    );
+  exportCsvBtn.addEventListener('click', exportCSV);
+  clearDataBtn.addEventListener('click', clearData);
 
-    applySearchFilter();
-    renderStats();
-    renderProgressGrid();
+  // QR generator
+  genQrBtn.addEventListener('click', generateQR);
+  qrNumInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') generateQR(); });
+  copyUrlBtn.addEventListener('click', () => {
+    const url = qrUrlText.textContent;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => flashBtn(copyUrlBtn, 'Copied!'));
+    } else {
+      fallbackCopy(url);
+      flashBtn(copyUrlBtn, 'Copied!');
+    }
+  });
 
+  // Auto-generate QR 1 on load
+  generateQR();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DATA FETCH
+───────────────────────────────────────────────────────────────*/
+async function fetchData() {
+  try {
+    const res  = await fetch(`${FIREBASE_URL}/checkins.json`);
+    const json = await res.json();
+    allData = json ? Object.values(json) : [];
+    renderAll();
   } catch (err) {
-    console.error('[admin] fetchData error:', err);
-    setStatus('error', 'Error fetching data: ' + err.message);
+    console.error('Fetch failed:', err);
   }
 }
 
+function renderAll() {
+  renderStats();
+  renderTop10();
+  applyFilters();
+  renderLeaderboard();
+}
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ─────────────────────────────────────────────────────────────
+   STATS
+───────────────────────────────────────────────────────────────*/
+function renderStats() {
+  const total       = allData.length;
+  const players     = new Set(allData.map(d => d.name?.toLowerCase())).size;
+  const checkpoints = new Set(allData.map(d => d.checkpoint)).size;
+
+  statTotal.textContent       = total;
+  statPlayers.textContent     = players;
+  statCheckpoints.textContent = `${checkpoints}/100`;
+
+  if (total > 0) {
+    const sorted = [...allData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    statLast.textContent = formatTime(sorted[0].timestamp);
+  } else {
+    statLast.textContent = '—';
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TOP 10
+───────────────────────────────────────────────────────────────*/
+function renderTop10() {
+  const lb = buildLeaderboard(allData).slice(0, 10);
+
+  if (lb.length === 0) {
+    top10List.innerHTML = '<div class="empty-state">No data yet.</div>';
+    return;
+  }
+
+  top10List.innerHTML = lb.map((p, i) => {
+    const rank  = i + 1;
+    const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+    const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+    const badge = officeBadge(p.office);
+    return `
+      <div class="top10-row">
+        <span class="top10-rank ${rankClass}">${medal}</span>
+        <span class="top10-name">${esc(p.name)}</span>
+        ${badge}
+        <span class="top10-count">${p.count}/100</span>
+      </div>
+    `;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FILTERS & TABLE
+───────────────────────────────────────────────────────────────*/
+function applyFilters() {
+  const name = filterName.value.toLowerCase().trim();
+  const office = filterOffice.value;
+  const cp = filterCheckpoint.value;
+
+  filteredData = allData.filter(d => {
+    if (name   && !d.name?.toLowerCase().includes(name)) return false;
+    if (office && d.office !== office)                    return false;
+    if (cp     && d.checkpoint !== cp)                    return false;
+    return true;
+  });
+
+  renderTable();
+}
+
+function renderTable() {
+  const sorted = sortData([...filteredData]);
+
+  if (sorted.length === 0) {
+    checkinsBody.innerHTML = '<tr><td colspan="5" class="empty-state">No matching entries.</td></tr>';
+    tableFooter.textContent = 'Showing 0 entries';
+    return;
+  }
+
+  checkinsBody.innerHTML = sorted.map((d, i) => {
+    const rowClass = d.office === 'London' ? 'row-london' : d.office === 'New York' ? 'row-ny' : '';
+    return `
+      <tr class="${rowClass}">
+        <td>${i + 1}</td>
+        <td>${formatDateTime(d.timestamp)}</td>
+        <td>${esc(d.name || '—')}</td>
+        <td>${officeBadge(d.office)}</td>
+        <td>${esc(d.checkpoint || '—')}</td>
+      </tr>
+    `;
+  }).join('');
+
+  tableFooter.textContent = `Showing ${sorted.length} of ${allData.length} entries`;
+}
+
+function sortData(arr) {
+  return arr.sort((a, b) => {
+    let va = a[sortCol] ?? '';
+    let vb = b[sortCol] ?? '';
+
+    if (sortCol === 'timestamp') {
+      va = new Date(va).getTime() || 0;
+      vb = new Date(vb).getTime() || 0;
+    } else if (sortCol === 'idx') {
+      // already in order
+      return 0;
+    } else {
+      va = String(va).toLowerCase();
+      vb = String(vb).toLowerCase();
+    }
+
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function updateSortHeaders() {
+  document.querySelectorAll('.data-table th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.col === sortCol) {
+      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LEADERBOARD
+───────────────────────────────────────────────────────────────*/
+function renderLeaderboard() {
+  const lb = buildLeaderboard(allData);
+
+  if (lb.length === 0) {
+    lbBody.innerHTML = '<tr><td colspan="6" class="empty-state">No data yet.</td></tr>';
+    return;
+  }
+
+  lbBody.innerHTML = lb.map((p, i) => {
+    const rank  = i + 1;
+    const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+    const pct   = (p.count / 100) * 100;
+    return `
+      <tr>
+        <td>${medal}</td>
+        <td>${esc(p.name)}</td>
+        <td>${officeBadge(p.office)}</td>
+        <td>${p.count}/100</td>
+        <td>
+          <div class="lb-progress-bar">
+            <div class="lb-progress-fill" style="width:${pct}%"></div>
+          </div>
+        </td>
+        <td>${formatDateTime(p.lastTime)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LEADERBOARD BUILDER (shared logic)
+───────────────────────────────────────────────────────────────*/
+function buildLeaderboard(data) {
+  const map = {};
+
+  data.forEach(d => {
+    if (!d.name) return;
+    const key = d.name.toLowerCase();
+    if (!map[key]) {
+      map[key] = { name: d.name, office: d.office, checkpoints: new Set(), lastTime: d.timestamp };
+    }
+    if (d.checkpoint) map[key].checkpoints.add(d.checkpoint);
+    // track latest timestamp
+    if (d.timestamp && d.timestamp > map[key].lastTime) map[key].lastTime = d.timestamp;
+  });
+
+  return Object.values(map)
+    .map(p => ({ ...p, count: p.checkpoints.size }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      // tie-break: earliest last check-in wins (they finished first)
+      return new Date(a.lastTime) - new Date(b.lastTime);
+    });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   QR CODES
+───────────────────────────────────────────────────────────────*/
+function generateQR() {
+  const num = parseInt(qrNumInput.value, 10);
+  if (isNaN(num) || num < 1 || num > 100) {
+    qrNumInput.classList.add('error');
+    qrNumInput.addEventListener('input', () => qrNumInput.classList.remove('error'), { once: true });
+    return;
+  }
+
+  const url     = `${QR_BASE_URL}?qr=${num}`;
+  const encoded = encodeURIComponent(url);
+  const qrSrc   = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encoded}&margin=8`;
+
+  qrImg.src = qrSrc;
+  qrImg.style.display = '';
+  qrUrlText.textContent = url;
+  qrUrlRow.style.display = '';
+  qrLabel.textContent = `Checkpoint ${num}`;
+}
+
+function buildQRMiniGrid() {
+  qrMiniGrid.innerHTML = '';
+  for (let i = 1; i <= 100; i++) {
+    const url     = `${QR_BASE_URL}?qr=${i}`;
+    const encoded = encodeURIComponent(url);
+    const src     = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encoded}&margin=4`;
+
+    const cell = document.createElement('div');
+    cell.className = 'qr-mini-cell';
+    cell.title = `Checkpoint ${i} — click to preview`;
+    cell.innerHTML = `
+      <img src="${src}" alt="CP ${i}" loading="lazy" />
+      <span>CP ${i}</span>
+    `;
+    cell.addEventListener('click', () => {
+      qrNumInput.value = i;
+      generateQR();
+      activateSection('qrcodes');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    qrMiniGrid.appendChild(cell);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHECKPOINT FILTER DROPDOWN
+───────────────────────────────────────────────────────────────*/
+function buildCheckpointFilter() {
+  for (let i = 1; i <= 100; i++) {
+    const opt = document.createElement('option');
+    opt.value = `Checkpoint ${i}`;
+    opt.textContent = `Checkpoint ${i}`;
+    filterCheckpoint.appendChild(opt);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
    AUTO-REFRESH
-   ═══════════════════════════════════════════════════════════════════ */
-function startAutoRefresh() {
-  stopAutoRefresh();
-  countdownSecs = REFRESH_SEC;
-  countdownNum.textContent = countdownSecs;
+───────────────────────────────────────────────────────────────*/
+function startRefreshCycle() {
+  resetCountdown();
+}
+
+function resetCountdown() {
+  clearInterval(refreshTimer);
+  clearInterval(countdownTimer);
+  countdownVal = REFRESH_SEC;
+  updateCountdownUI();
 
   countdownTimer = setInterval(() => {
-    countdownSecs--;
-    countdownNum.textContent = countdownSecs;
-    if (countdownSecs <= 0) {
-      countdownSecs = REFRESH_SEC;
+    countdownVal--;
+    updateCountdownUI();
+    if (countdownVal <= 0) {
       fetchData();
+      countdownVal = REFRESH_SEC;
     }
   }, 1000);
 }
 
-function stopAutoRefresh() {
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-  }
+function updateCountdownUI() {
+  refreshCountdown.textContent = `Refreshing in ${countdownVal}s`;
 }
 
-function resetCountdown() {
-  countdownSecs = REFRESH_SEC;
-  countdownNum.textContent = countdownSecs;
-}
+/* ─────────────────────────────────────────────────────────────
+   CSV EXPORT
+───────────────────────────────────────────────────────────────*/
+function exportCSV() {
+  if (allData.length === 0) { alert('No data to export.'); return; }
 
-refreshBtn.addEventListener('click', () => {
-  resetCountdown();
-  fetchData();
-});
+  const headers = ['Timestamp', 'Name', 'Office', 'Checkpoint'];
+  const rows = allData
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .map(d => [
+      d.timestamp || '',
+      d.name       || '',
+      d.office     || '',
+      d.checkpoint || ''
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
 
-
-/* ═══════════════════════════════════════════════════════════════════
-   STATS
-   ═══════════════════════════════════════════════════════════════════ */
-function renderStats() {
-  const total = allSubmissions.length;
-  const teams = new Set(allSubmissions.map(s => s.team)).size;
-  const cps   = new Set(allSubmissions.map(s => s.checkpoint)).size;
-
-  statTotal.textContent       = total;
-  statTeams.textContent       = teams;
-  statCheckpoints.textContent = cps;
-  statLast.textContent        = total === 0 ? '—' : formatTimeFull(allSubmissions[0].timestamp);
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
-   PROGRESS GRID
-   ═══════════════════════════════════════════════════════════════════ */
-function renderProgressGrid() {
-  /* Build lookup: "Team||Checkpoint" → earliest timestamp */
-  const lookup = {};
-  /* Sort oldest→newest so first write wins */
-  const byAge = [...allSubmissions].sort(
-    (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
-  );
-  byAge.forEach(s => {
-    const key = s.team + '||' + s.checkpoint;
-    if (!lookup[key]) lookup[key] = s.timestamp;
-  });
-
-  progressBody.innerHTML = '';
-
-  TEAMS.forEach(team => {
-    const tr = document.createElement('tr');
-
-    /* Team name cell */
-    const tdTeam = document.createElement('td');
-    tdTeam.className = 'pg-team-col';
-    const dot = document.createElement('span');
-    dot.className = 'team-dot ' + (TEAM_DOT_CLASS[team] || '');
-    tdTeam.appendChild(dot);
-    tdTeam.appendChild(document.createTextNode(team));
-    tr.appendChild(tdTeam);
-
-    /* Checkpoint cells */
-    CHECKPOINTS.forEach(cp => {
-      const key = team + '||' + cp;
-      const ts  = lookup[key];
-      const td  = document.createElement('td');
-      const cell = document.createElement('div');
-      cell.className = 'pg-cell';
-
-      const check = document.createElement('div');
-      if (ts) {
-        check.className  = 'pg-check pg-check--done';
-        check.textContent = '✓';
-        const timeEl = document.createElement('div');
-        timeEl.className  = 'pg-time';
-        timeEl.textContent = formatTimeShort(ts);
-        cell.appendChild(check);
-        cell.appendChild(timeEl);
-      } else {
-        check.className  = 'pg-check pg-check--empty';
-        check.textContent = '—';
-        cell.appendChild(check);
-      }
-
-      td.appendChild(cell);
-      tr.appendChild(td);
-    });
-
-    progressBody.appendChild(tr);
-  });
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
-   SUBMISSIONS TABLE
-   ═══════════════════════════════════════════════════════════════════ */
-function applySearchFilter() {
-  const q = (tableSearch.value || '').toLowerCase().trim();
-  filteredData = q
-    ? allSubmissions.filter(s =>
-        (s.team       || '').toLowerCase().includes(q) ||
-        (s.checkpoint || '').toLowerCase().includes(q) ||
-        (s.answer     || '').toLowerCase().includes(q)
-      )
-    : [...allSubmissions];
-
-  applySortAndRender();
-}
-
-function applySortAndRender() {
-  const sorted = [...filteredData].sort((a, b) => {
-    let va, vb;
-
-    if (sortCol === 'timestamp') {
-      va = new Date(a.timestamp).getTime();
-      vb = new Date(b.timestamp).getTime();
-    } else if (sortCol === 'index') {
-      /* "index" means original position in allSubmissions (newest-first) */
-      va = allSubmissions.indexOf(a);
-      vb = allSubmissions.indexOf(b);
-    } else {
-      va = String(a[sortCol] ?? '').toLowerCase();
-      vb = String(b[sortCol] ?? '').toLowerCase();
-    }
-
-    if (va < vb) return sortDir === 'asc' ? -1 :  1;
-    if (va > vb) return sortDir === 'asc' ?  1 : -1;
-    return 0;
-  });
-
-  renderTable(sorted);
-}
-
-function renderTable(rows) {
-  submissionsBody.innerHTML = '';
-
-  if (rows.length === 0) {
-    tableEmpty.style.display    = 'block';
-    submissionsTable.style.display = 'none';
-    return;
-  }
-
-  tableEmpty.style.display    = 'none';
-  submissionsTable.style.display = '';
-
-  rows.forEach((s, i) => {
-    const tr = document.createElement('tr');
-    if (TEAM_ROW_CLASS[s.team]) tr.className = TEAM_ROW_CLASS[s.team];
-
-    tr.innerHTML = `
-      <td class="col-num">${i + 1}</td>
-      <td class="col-time">${formatTimeFull(s.timestamp)}</td>
-      <td class="col-team">
-        <span class="team-dot ${TEAM_DOT_CLASS[s.team] || ''}"></span>${escHtml(s.team || '—')}
-      </td>
-      <td class="col-cp">${escHtml(s.checkpoint || '—')}</td>
-      <td class="col-ans">${escHtml(s.answer || '—')}</td>
-    `;
-    submissionsBody.appendChild(tr);
-  });
-}
-
-/* Search */
-tableSearch.addEventListener('input', applySearchFilter);
-
-/* Sortable column headers */
-document.querySelectorAll('.submissions-table th.sortable').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    if (sortCol === col) {
-      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-      sortCol = col;
-      sortDir = col === 'timestamp' ? 'desc' : 'asc';
-    }
-    /* Update header indicator classes */
-    document.querySelectorAll('.submissions-table th.sortable').forEach(h => {
-      h.classList.remove('sort-asc', 'sort-desc');
-    });
-    th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
-    applySortAndRender();
-  });
-});
-
-
-/* ═══════════════════════════════════════════════════════════════════
-   QR CODES
-   ═══════════════════════════════════════════════════════════════════ */
-function buildQRCodes() {
-  qrGrid.innerHTML = '';
-
-  for (let n = 1; n <= 5; n++) {
-    const scanUrl  = `${QR_BASE_URL}?qr=${n}`;
-    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(scanUrl)}`;
-
-    const card = document.createElement('div');
-    card.className = 'qr-card';
-    card.innerHTML = `
-      <img class="qr-img" src="${qrApiUrl}" alt="QR code for Checkpoint ${n}" loading="lazy" />
-      <div class="qr-label">Checkpoint ${n}</div>
-      <div class="qr-url">${escHtml(scanUrl)}</div>
-      <button class="btn btn-outline btn-sm copy-btn" data-url="${escHtml(scanUrl)}">Copy URL</button>
-    `;
-    qrGrid.appendChild(card);
-  }
-
-  /* Copy-URL buttons */
-  qrGrid.querySelectorAll('.copy-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const url = btn.dataset.url;
-
-      const doSuccess = () => {
-        btn.textContent = '✓ Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => {
-          btn.textContent = 'Copy URL';
-          btn.classList.remove('copied');
-        }, 2000);
-      };
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(doSuccess).catch(() => fallbackCopy(url, doSuccess));
-      } else {
-        fallbackCopy(url, doSuccess);
-      }
-    });
-  });
-}
-
-function fallbackCopy(text, callback) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand('copy'); callback(); } catch (_) { /* silent */ }
-  document.body.removeChild(ta);
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
-   EXPORT CSV
-   ═══════════════════════════════════════════════════════════════════ */
-exportBtn.addEventListener('click', () => {
-  if (allSubmissions.length === 0) {
-    alert('No data to export.');
-    return;
-  }
-
-  const headers = ['Timestamp', 'Team', 'Checkpoint', 'Answer'];
-  const rows = allSubmissions.map(s => [
-    csvCell(s.timestamp),
-    csvCell(s.team),
-    csvCell(s.checkpoint),
-    csvCell(s.answer),
-  ]);
-
-  const csv  = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+  const csv  = [headers.join(','), ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `kpf-hunt-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
+  a.download = `kpf-hunt-checkins-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
-  document.body.removeChild(a);
   URL.revokeObjectURL(url);
-});
-
-function csvCell(val) {
-  return '"' + String(val ?? '').replace(/"/g, '""') + '"';
 }
 
-
-/* ═══════════════════════════════════════════════════════════════════
-   CLEAR ALL DATA
-   ═══════════════════════════════════════════════════════════════════ */
-clearBtn.addEventListener('click', async () => {
-  const first = window.confirm(
-    '⚠️ Delete ALL submissions from Firebase?\n\nThis cannot be undone.'
-  );
-  if (!first) return;
-
-  const second = window.confirm('Double-confirm: permanently delete all data?');
-  if (!second) return;
-
-  clearBtn.disabled    = true;
-  clearBtn.textContent = 'Clearing…';
+/* ─────────────────────────────────────────────────────────────
+   CLEAR DATA
+───────────────────────────────────────────────────────────────*/
+async function clearData() {
+  if (!confirm('⚠️ Delete ALL check-in data?\nThis cannot be undone.')) return;
+  if (!confirm('Are you absolutely sure? All data will be permanently deleted.')) return;
 
   try {
-    const res = await fetch(FIREBASE_URL + '/submissions.json', { method: 'DELETE' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-
-    allSubmissions = [];
-    filteredData   = [];
-    applySearchFilter();
-    renderStats();
-    renderProgressGrid();
-    setStatus('ok', 'All data cleared successfully.');
-
+    await fetch(`${FIREBASE_URL}/checkins.json`, { method: 'DELETE' });
+    allData = [];
+    renderAll();
   } catch (err) {
-    alert('Failed to clear data: ' + err.message);
-  } finally {
-    clearBtn.disabled    = false;
-    clearBtn.textContent = '🗑 Clear';
+    alert('Failed to clear data. Check console.');
+    console.error(err);
   }
-});
+}
 
-
-/* ═══════════════════════════════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════════════════════════════ */
-function formatTimeFull(iso) {
+/* ─────────────────────────────────────────────────────────────
+   UTILITIES
+───────────────────────────────────────────────────────────────*/
+function formatTime(iso) {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('en-GB', {
-      day:    '2-digit',
-      month:  'short',
-      year:   'numeric',
-      hour:   '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-  } catch (_) { return iso; }
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch { return '—'; }
 }
 
-function formatTimeShort(iso) {
-  if (!iso) return '';
+function formatDateTime(iso) {
+  if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleTimeString('en-GB', {
-      hour:   '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-  } catch (_) { return ''; }
+    const d = new Date(iso);
+    return d.toLocaleDateString([], { day: '2-digit', month: 'short' }) + ' ' +
+           d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return '—'; }
 }
 
-function escHtml(str) {
+function officeBadge(office) {
+  if (office === 'London')   return `<span class="badge-london">London</span>`;
+  if (office === 'New York') return `<span class="badge-ny">New York</span>`;
+  return `<span>${esc(office || '—')}</span>`;
+}
+
+function esc(str) {
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function flashBtn(btn, text) {
+  const orig = btn.textContent;
+  btn.textContent = text;
+  setTimeout(() => { btn.textContent = orig; }, 1500);
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch {}
+  document.body.removeChild(ta);
 }
