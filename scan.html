@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KPF Hunt — Checkpoint</title>
+  <title>KPF Hunt — Check In</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -11,103 +11,84 @@
 </head>
 <body class="scan-page">
 
-  <div class="scan-wrap">
+  <div class="scan-container" id="scanContainer">
 
-    <!-- ══ INVALID QR STATE ══ -->
-    <div id="invalid-state" class="scan-card fade-up" style="display:none;">
-      <div class="invalid-icon">⚠️</div>
-      <h2 class="invalid-title">Invalid QR Code</h2>
-      <p class="invalid-msg">
-        This QR code isn't recognised.<br />
-        Please scan a valid checkpoint QR code at one of the 5 stations.
-      </p>
-      <a href="index.html" class="btn btn-outline">← Back to Home</a>
+    <!-- Invalid QR state -->
+    <div class="scan-card invalid-card" id="invalidCard" style="display:none;">
+      <div class="invalid-icon">❌</div>
+      <h2>Invalid QR Code</h2>
+      <p>This QR code is not recognised.<br>Please scan a valid KPF Hunt checkpoint QR code.</p>
+      <a href="index.html" class="btn-secondary">← Back to Home</a>
     </div>
 
-    <!-- ══ SCAN FORM STATE ══ -->
-    <div id="form-state" class="scan-card fade-up" style="display:none;">
-
+    <!-- Check-in form -->
+    <div class="scan-card form-card" id="formCard" style="display:none;">
       <div class="scan-header">
-        <div id="checkpoint-badge" class="checkpoint-badge">📍 Checkpoint —</div>
-        <div class="kpf-wordmark">KPF Hunt</div>
+        <span class="kpf-logo-sm">KPF Hunt</span>
       </div>
 
-      <form id="scan-form" novalidate autocomplete="off">
+      <div class="checkpoint-badge" id="checkpointBadge">
+        <span class="cp-pin">📍</span>
+        <span class="cp-label" id="cpLabel">Checkpoint —</span>
+      </div>
 
-        <!-- Team -->
-        <div class="field-group">
-          <label class="field-label" for="team-select">Your Team</label>
-          <div class="select-wrap">
-            <select id="team-select" class="field-input field-select" required>
-              <option value="" disabled selected>Select your team…</option>
-              <option value="Team Alpha">Team Alpha</option>
-              <option value="Team Beta">Team Beta</option>
-              <option value="Team Gamma">Team Gamma</option>
-              <option value="Team Delta">Team Delta</option>
-              <option value="Team Sigma">Team Sigma</option>
-            </select>
-            <span class="select-arrow" aria-hidden="true">▾</span>
-          </div>
-        </div>
+      <form id="checkinForm" novalidate>
 
-        <!-- Password -->
-        <div class="field-group">
-          <label class="field-label" for="password-input">Team Password</label>
-          <div class="pw-wrap">
-            <input
-              type="password"
-              id="password-input"
-              class="field-input"
-              placeholder="Enter your team password"
-              autocomplete="off"
-              spellcheck="false"
-              required
-            />
-            <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Toggle password visibility">
-              <!-- Eye open (default) -->
-              <svg id="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-          </div>
-          <div class="field-error" id="pw-error" role="alert" aria-live="polite"></div>
-        </div>
-
-        <!-- Answer -->
-        <div class="field-group">
-          <label class="field-label" for="answer-input">Your Answer</label>
-          <textarea
-            id="answer-input"
-            class="field-input field-textarea"
-            placeholder="Type your answer here…"
-            rows="4"
+        <div class="form-group">
+          <label for="nameInput" class="form-label">Your Name</label>
+          <input
+            type="text"
+            id="nameInput"
+            class="form-input"
+            placeholder="Enter your full name"
+            autocomplete="name"
+            autocorrect="off"
+            spellcheck="false"
             required
-          ></textarea>
-          <div class="field-error" id="answer-error" role="alert" aria-live="polite"></div>
+          />
         </div>
 
-        <!-- Form-level error -->
-        <div class="form-error" id="form-error" role="alert" aria-live="polite"></div>
+        <div class="form-group">
+          <label for="officeSelect" class="form-label">Your Office</label>
+          <select id="officeSelect" class="form-input form-select" required>
+            <option value="" disabled selected>Select your office</option>
+            <option value="London">London</option>
+            <option value="New York">New York</option>
+          </select>
+        </div>
 
-        <button type="submit" class="btn btn-primary btn-submit" id="submit-btn">
-          <span class="btn-text">Submit Answer</span>
-          <span class="btn-spinner" aria-hidden="true"></span>
+        <!-- Duplicate warning -->
+        <div class="alert-warning" id="dupWarning" style="display:none;">
+          ⚠️ You've already checked in at this checkpoint!
+        </div>
+
+        <!-- Error message -->
+        <div class="alert-error" id="errorMsg" style="display:none;">
+          ❌ Check-in failed. Please try again.
+        </div>
+
+        <button type="submit" class="btn-primary btn-submit" id="submitBtn">
+          <span class="btn-text">Check In ✓</span>
+          <span class="btn-spinner" style="display:none;">
+            <svg class="spinner-svg" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4" stroke-dashoffset="10" />
+            </svg>
+          </span>
         </button>
 
       </form>
     </div>
 
-    <!-- ══ SUCCESS STATE ══ -->
-    <div id="success-state" class="scan-card scan-card--success fade-up" style="display:none;">
-      <div class="success-check pop-in" aria-hidden="true">✓</div>
-      <h2 class="success-title">Answer Submitted!</h2>
-      <p class="success-msg" id="success-msg">Good luck! 🎉</p>
-      <p class="success-sub">Your answer has been recorded.<br />Head to the next checkpoint!</p>
+    <!-- Success card -->
+    <div class="scan-card success-card" id="successCard" style="display:none;">
+      <div class="success-check" id="successCheck">✓</div>
+      <h2 class="success-title" id="successTitle">Checked in!</h2>
+      <p class="success-msg" id="successMsg"></p>
+      <p class="success-hint">Keep scanning to climb the leaderboard! 🏆</p>
+      <a href="leaderboard.html" class="btn-secondary">View Leaderboard →</a>
     </div>
 
-  </div><!-- /scan-wrap -->
+  </div>
 
   <script src="js/scan.js"></script>
 </body>
