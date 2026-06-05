@@ -9,54 +9,58 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
-<body class="welcome-page">
+<body class="index-page">
 
-  <div class="welcome-wrap">
+  <div class="index-container">
 
-    <div class="welcome-card fade-up">
+    <header class="index-header">
+      <div class="kpf-wordmark">KPF</div>
+      <div class="hunt-badge">HUNT</div>
+    </header>
 
-      <!-- KPF Logo -->
-      <div class="kpf-logo">
-        <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <rect width="60" height="60" rx="16" fill="#000"/>
-          <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle"
-                fill="#fff" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="23" letter-spacing="-0.5">KPF</text>
-        </svg>
-      </div>
+    <main class="index-main">
+      <div class="hero-icon">🎯</div>
+      <h1 class="hero-title">KPF Hunt</h1>
+      <p class="hero-subtitle">Scan a QR code at each checkpoint to check in.<br>Collect them all to top the leaderboard!</p>
 
-      <h1 class="welcome-title">KPF Hunt</h1>
-      <p class="welcome-emoji">🎯</p>
-      <p class="welcome-subtitle">
-        Scan a QR code at each checkpoint<br />to submit your answer.
-      </p>
-
-      <div class="welcome-steps">
-        <div class="step">
+      <div class="how-it-works">
+        <div class="step-card">
           <span class="step-num">1</span>
-          <span class="step-text">Find a checkpoint around the venue</span>
+          <div class="step-text">
+            <strong>Find a checkpoint</strong>
+            <span>Look for QR codes posted around the venue</span>
+          </div>
         </div>
-        <div class="step">
+        <div class="step-card">
           <span class="step-num">2</span>
-          <span class="step-text">Scan the QR code with your phone</span>
+          <div class="step-text">
+            <strong>Scan the QR code</strong>
+            <span>Use your phone camera to scan</span>
+          </div>
         </div>
-        <div class="step">
+        <div class="step-card">
           <span class="step-num">3</span>
-          <span class="step-text">Select your team, enter your password &amp; answer</span>
+          <div class="step-text">
+            <strong>Check in</strong>
+            <span>Enter your name and office to log your visit</span>
+          </div>
         </div>
-        <div class="step">
+        <div class="step-card">
           <span class="step-num">4</span>
-          <span class="step-text">Hit Submit — good luck! 🏆</span>
+          <div class="step-text">
+            <strong>Climb the board</strong>
+            <span>More checkpoints = higher rank!</span>
+          </div>
         </div>
       </div>
 
-      <div class="welcome-badge">
-        5 Checkpoints &nbsp;·&nbsp; 5 Teams &nbsp;·&nbsp; 1 Winner
-      </div>
+      <a href="leaderboard.html" class="btn-primary index-lb-btn">
+        🏆 View Live Leaderboard
+      </a>
+    </main>
 
-    </div>
-
-    <footer class="welcome-footer">
-      <a href="admin.html" class="admin-link">Admin Dashboard →</a>
+    <footer class="index-footer">
+      <a href="admin.html" class="admin-link">Admin →</a>
     </footer>
 
   </div>
