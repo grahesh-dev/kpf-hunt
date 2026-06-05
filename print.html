@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KPF Hunt — Print QR Codes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="print-page">
+
+  <div class="print-controls no-print">
+    <div class="print-ctrl-inner">
+      <span class="kpf-wordmark-sm">KPF Hunt</span>
+      <span class="print-ctrl-title">— Print All QR Codes</span>
+      <button class="btn-primary" onclick="window.print()">🖨 Print</button>
+      <a href="admin.html" class="btn-ghost">← Back to Admin</a>
+    </div>
+  </div>
+
+  <div class="print-doc">
+    <div class="print-doc-header">
+      <h1 class="print-doc-title">KPF Hunt — QR Checkpoints</h1>
+      <p class="print-doc-sub">Scan the QR code at each checkpoint to check in</p>
+    </div>
+    <div class="qr-print-grid" id="qrPrintGrid">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <script>
+    const BASE_URL = 'https://grahesh-dev.github.io/kpf-hunt/scan.html';
+    const grid = document.getElementById('qrPrintGrid');
+
+    for (let i = 1; i <= 100; i++) {
+      const url = `${BASE_URL}?qr=${i}`;
+      const encoded = encodeURIComponent(url);
+      const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encoded}&margin=6`;
+
+      const cell = document.createElement('div');
+      cell.className = 'qr-print-cell';
+      cell.innerHTML = `
+        <img src="${qrSrc}" alt="Checkpoint ${i} QR" class="qr-print-img" loading="lazy" />
+        <div class="qr-print-label">Checkpoint ${i}</div>
+        <div class="qr-print-url">${BASE_URL}?qr=${i}</div>
+      `;
+      grid.appendChild(cell);
+    }
+  </script>
+</body>
+</html>
